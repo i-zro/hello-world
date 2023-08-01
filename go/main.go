@@ -7,76 +7,63 @@ import (
 	"path/filepath"
 	"strings"
 	"regexp"
-	"unicode"
+	"sort"
 )
 
-func cleanString(str string) string {
-    return strings.Map(func(r rune) rune {
-        if unicode.IsPrint(r) {
-            return r
-        }
-        return -1
-    }, str)
-}
-
-func extractMarkdownTables(mdText string, filename string) map[string][]string {
+func extractMarkdownTables(mdText string) [][]string {
 	tablePattern := regexp.MustCompile(`(?m)\|(.+?)\|\n\|[-| :]+?\|\n((?:\|.*\|\n)*)`)
 	tables := tablePattern.FindAllStringSubmatch(mdText, -1)
 
-	result := make(map[string][]string)
+	var result [][]string
 	for _, table := range tables {
 		rows := regexp.MustCompile(`(?m)\|(.+)\|`).FindAllStringSubmatch(table[0], -1)
+		var tableData []string
 		for _, row := range rows {
 			if strings.Contains(row[1], "[습관]") {
-				columns := strings.Split(row[1], "|")
-				if len(columns) > 3 {
-					habit := strings.TrimSpace(columns[2])
-					status := strings.TrimSpace(columns[3])
-					result[habit] = append(result[habit], fmt.Sprintf("| %s | %s |", filename, cleanString(status)))
-				}
+				tableData = append(tableData, row[1])
 			}
 		}
+		result = append(result, tableData)
 	}
 
 	return result
 }
 
-func writeHabitFile(path string, data map[string][]string) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0644)
+func updateOrCreateHabitFile(path string, fileName string, habitData map[string][]string) {
+	// Open the existing file or create a new one.
+	file, err := os.OpenFile(path + "habit-" + fileName + ".md", os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		fmt.Println("Error:", err)
+		return
 	}
 	defer file.Close()
 
-	for habit, rows := range data {
-		_, err = file.WriteString(fmt.Sprintf("\n# %s\n| 날짜 | 완료여부 |\n|--|--|\n", habit))
-		if err != nil {
-			return err
-		}
-
-		for _, row := range rows {
-			_, err = file.WriteString(fmt.Sprintf("%s\n", row))
-			if err != nil {
-				return err
-			}
+	// Write the habit data to the file.
+	var habitNames []string
+	for habitName := range habitData {
+		habitNames = append(habitNames, habitName)
+	}
+	sort.Strings(habitNames)
+	for _, habitName := range habitNames {
+		file.WriteString(fmt.Sprintf("\n# %s\n| 날짜 | 완료여부 |\n|--|--|\n", habitName))
+		for _, data := range habitData[habitName] {
+			file.WriteString(data)
 		}
 	}
-
-	return nil
 }
 
 func main() {
 	// github actions와 로컬 환경 경로 분리
-	var rootDir, habitFile string
+	var rootDir string
+	var viewDir string
 	if os.Getenv("GITHUB_ACTIONS") == "true" {
 		rootDir = os.Getenv("GITHUB_WORKSPACE") + "/archieve/"
-		habitFile = os.Getenv("GITHUB_WORKSPACE") + "/view/habit.md"
+		viewDir = os.Getenv("GITHUB_WORKSPACE") + "/view/"
 	} else {
 		rootDir = "./archieve/"
-		habitFile = "./view/habit.md"
+		viewDir = "./view/"
 	}
 
-	result := make(map[string][]string)
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -96,29 +83,34 @@ func main() {
 			}
 			mdText := string(mdBytes)
 
-			// Extract the filename without extension.
-			_, filename := filepath.Split(path)
-			filename = strings.TrimSuffix(filename, filepath.Ext(filename))
-
 			// Extract tables.
-			tables := extractMarkdownTables(mdText, filename)
+			tables := extractMarkdownTables(mdText)
 
-			// Merge the results.
-			for k, v := range tables {
-				result[k] = append(result[k], v...)
+			if len(tables) > 0 {
+				fileName := filepath.Base(path)
+				fileName = strings.TrimSuffix(fileName, filepath.Ext(fileName))
+				fileYearMonth := fileName[:4]
+				
+				habitData := make(map[string][]string)
+				
+				for _, table := range tables {
+					if len(table) > 0 {
+						for _, row := range table {
+							columns := strings.Split(row, "|")
+							habitName := strings.TrimSpace(columns[2])
+							habitStatus := strings.TrimSpace(columns[3])
+							habitData[habitName] = append(habitData[habitName], fmt.Sprintf("| %s | %s |\n", fileName, habitStatus))
+						}
+					}
+				}
+
+				updateOrCreateHabitFile(viewDir, fileYearMonth, habitData)
 			}
 		}
 
 		return nil
 	})
 
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-
-	// Write the results to the habit file.
-	err = writeHabitFile(habitFile, result)
 	if err != nil {
 		fmt.Println("Error:", err)
 	}
