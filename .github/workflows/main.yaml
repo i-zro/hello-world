@@ -24,7 +24,7 @@ jobs:
       run: |
         git diff
         git add .
-        git config --global user.email "bot@example.com"
-        git config --global user.name "Your Name"
+        git config --global user.email "naa0@lguplus.co.kr"
+        git config --global user.name "i-zro"
         git commit -m "Update habit files" --allow-empty
         git push origin gh-pages
