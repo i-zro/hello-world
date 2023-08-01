@@ -16,7 +16,7 @@ func extractMarkdownTables(mdText string) [][]string {
 
 	var result [][]string
 	for _, table := range tables {
-		rows := regexp.MustCompile(`(?m)\|(.+)\|`).FindAllStringSubmatch(table[0], -1)
+		rows := regexp.MustCompile(`(?m)\|(.+f)\|`).FindAllStringSubmatch(table[0], -1)
 		var tableData []string
 		for _, row := range rows {
 			if strings.Contains(row[1], "[습관]") {
@@ -57,11 +57,16 @@ func main() {
 	var rootDir string
 	var viewDir string
 	if os.Getenv("GITHUB_ACTIONS") == "true" {
-		rootDir = os.Getenv("GITHUB_WORKSPACE") + "/archieve/"
+		rootDir = os.Getenv("GITHUB_WORKSPACE") + "/archive/"
 		viewDir = os.Getenv("GITHUB_WORKSPACE") + "/view/"
 	} else {
-		rootDir = "./archieve/"
+		rootDir = "./archive/"
 		viewDir = "./view/"
+	}
+
+	// Check if viewDir exists, if not create it.
+	if _, err := os.Stat(viewDir); os.IsNotExist(err) {
+		os.Mkdir(viewDir, 0755)
 	}
 
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {

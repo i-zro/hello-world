@@ -19,3 +19,12 @@ jobs:
       run: |
         cd go
         go run main.go
+
+    - name: Commit and push if it changed
+      run: |
+        git diff
+        git add .
+        git config --global user.email "bot@example.com"
+        git config --global user.name "Your Name"
+        git commit -m "Update habit files" --allow-empty
+        git push origin gh-pages
